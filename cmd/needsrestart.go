@@ -208,7 +208,7 @@ func checkNeedsRestart() (int, error) {
 		return code, err
 	}
 
-	if runningKernel != mostRecent {
+	if runningKernel == mostRecent {
 		code = 1
 	}
 
