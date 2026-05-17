@@ -25,6 +25,8 @@ struct GenerateArgs {
 
 #[derive(Args, Debug)]
 struct PrefixArgs {
+    #[arg(short, long, help = "Copy the path to clipboard")]
+    copy: bool,
     #[arg(help = "Path relative to the current path")]
     relative_path: Option<String>,
 }
@@ -51,6 +53,6 @@ fn main() {
             print_completions(generate_args.shell, &mut Cli::command())
         },
         Commands::LatestKernel => latest_kernel::check(),
-        Commands::Prefix(prefix_args) => prefix::get(prefix_args.relative_path.clone()),
+        Commands::Prefix(prefix_args) => prefix::get(prefix_args.relative_path.clone(), prefix_args.copy),
     }
 }
