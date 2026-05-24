@@ -10,6 +10,11 @@ const KERNEL_VERSION_REGEX: &str =
     r"BOOT_IMAGE=(?:\([a-z0-9]+,[a-z0-9]+\))?/vmlinuz-([0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?)";
 const UBUNTU_KERNEL_PKG_REGEX: &str = r"linux-image-([0 - 9] + \.[0 - 9] + \.[0 -9] + - [0 - 9] +)";
 
+pub struct KernelInfo {
+    pub latest: String,
+    pub running: String,
+}
+
 fn get_os_id() -> Result<String, String> {
     let file = File::open("/etc/os-release");
     let reader = BufReader::new(file.unwrap());
@@ -124,7 +129,7 @@ fn get_running_kernel() -> Result<String, String> {
     }
 }
 
-pub fn running_latest() -> Result<bool, String> {
+pub fn kernel_info() -> Result<KernelInfo, String> {
     let os_id = match get_os_id() {
         Ok(os_id) => os_id,
         Err(why) => return Err(why),
@@ -146,6 +151,5 @@ pub fn running_latest() -> Result<bool, String> {
         Err(why) => return Err(why),
     };
 
-    let is_running_latest = most_recent.eq(&running_kernel);
-    Ok(is_running_latest)
+    Ok(KernelInfo{latest: most_recent.clone(), running: running_kernel})
 }

@@ -24,6 +24,12 @@ struct GenerateArgs {
 }
 
 #[derive(Args, Debug)]
+struct LatestKernelArgs {
+    #[arg(short, long, help = "Displays latest and running kernel versions")]
+    print: bool
+}
+
+#[derive(Args, Debug)]
 struct PrefixArgs {
     #[arg(short, long, help = "Copy the path to clipboard")]
     copy: bool,
@@ -36,7 +42,7 @@ enum Commands {
     #[command(about = "Generate completions")]
     Generate(GenerateArgs),
     #[command(about = "Check if latest kernel is running", alias = "lk")]
-    LatestKernel,
+    LatestKernel(LatestKernelArgs),
     #[command(about = "Show prefix within repo", alias = "prf")]
     Prefix(PrefixArgs),
 }
@@ -52,7 +58,9 @@ fn main() {
         Commands::Generate(generate_args) => {
             print_completions(generate_args.shell, &mut Cli::command())
         },
-        Commands::LatestKernel => latest_kernel::check(),
+        Commands::LatestKernel(latest_kernel_args) => {
+            latest_kernel::check(latest_kernel_args.print);
+        },
         Commands::Prefix(prefix_args) => prefix::get(prefix_args.relative_path.clone(), prefix_args.copy),
     }
 }
