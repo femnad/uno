@@ -1,9 +1,9 @@
 pub mod prefix;
 
+use crate::prefix::prefix::get_prefix;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use crate::prefix::prefix::get_prefix;
 
 pub fn get(reference: Option<String>, copy: bool) {
     let prefix = match get_prefix() {
@@ -12,7 +12,11 @@ pub fn get(reference: Option<String>, copy: bool) {
     };
 
     let resolved = if reference.is_some() {
-        String::from(Path::join(Path::new(&prefix), Path::new(reference.unwrap().as_str())).to_str().unwrap())
+        String::from(
+            Path::join(Path::new(&prefix), Path::new(reference.unwrap().as_str()))
+                .to_str()
+                .unwrap(),
+        )
     } else {
         prefix
     };
@@ -22,9 +26,7 @@ pub fn get(reference: Option<String>, copy: bool) {
     }
 
     if copy {
-        let cmd = Command::new("xclip")
-            .stdin(Stdio::piped())
-            .spawn();
+        let cmd = Command::new("xclip").stdin(Stdio::piped()).spawn();
         if let Some(mut stdin) = cmd.unwrap().stdin.take() {
             stdin.write_all(resolved.as_bytes()).unwrap();
         }

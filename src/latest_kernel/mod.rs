@@ -1,7 +1,7 @@
 pub mod comparison;
 
-use std::process::exit;
 use crate::latest_kernel::comparison::kernel_info;
+use std::process::exit;
 
 pub fn check(print: bool) {
     let result = match kernel_info() {
@@ -15,7 +15,7 @@ pub fn check(print: bool) {
     if print {
         println!("Current kernel version : {}", result.running);
         println!("Latest kernel version  : {}", result.latest);
-        return
+        return;
     }
 
     let is_running_latest = result.running.eq(result.latest.as_str());

@@ -151,5 +151,8 @@ pub fn kernel_info() -> Result<KernelInfo, String> {
         Err(why) => return Err(why),
     };
 
-    Ok(KernelInfo{latest: most_recent.clone(), running: running_kernel})
+    Ok(KernelInfo {
+        latest: most_recent.clone(),
+        running: running_kernel,
+    })
 }

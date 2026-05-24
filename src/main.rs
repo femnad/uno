@@ -26,7 +26,7 @@ struct GenerateArgs {
 #[derive(Args, Debug)]
 struct LatestKernelArgs {
     #[arg(short, long, help = "Displays latest and running kernel versions")]
-    print: bool
+    print: bool,
 }
 
 #[derive(Args, Debug)]
@@ -48,7 +48,12 @@ enum Commands {
 }
 
 fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
-    generate(generator, cmd, cmd.get_name().to_string(), &mut io::stdout());
+    generate(
+        generator,
+        cmd,
+        cmd.get_name().to_string(),
+        &mut io::stdout(),
+    );
 }
 
 fn main() {
@@ -57,10 +62,12 @@ fn main() {
     match &cli.command {
         Commands::Generate(generate_args) => {
             print_completions(generate_args.shell, &mut Cli::command())
-        },
+        }
         Commands::LatestKernel(latest_kernel_args) => {
             latest_kernel::check(latest_kernel_args.print);
-        },
-        Commands::Prefix(prefix_args) => prefix::get(prefix_args.relative_path.clone(), prefix_args.copy),
+        }
+        Commands::Prefix(prefix_args) => {
+            prefix::get(prefix_args.relative_path.clone(), prefix_args.copy)
+        }
     }
 }
