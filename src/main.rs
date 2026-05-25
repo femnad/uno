@@ -2,8 +2,10 @@ use clap::{Args, Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{Generator, Shell, generate};
 use std::io;
 
+mod internal;
 mod latest_kernel;
 mod prefix;
+mod pwd;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -30,6 +32,12 @@ struct LatestKernelArgs {
 }
 
 #[derive(Args, Debug)]
+struct PwdArgs {
+    #[arg(short, long, help = "Copy the path to clipboard")]
+    copy: bool,
+}
+
+#[derive(Args, Debug)]
 struct PrefixArgs {
     #[arg(short, long, help = "Copy the path to clipboard")]
     copy: bool,
@@ -43,6 +51,8 @@ enum Commands {
     Generate(GenerateArgs),
     #[command(about = "Check if latest kernel is running", alias = "lk")]
     LatestKernel(LatestKernelArgs),
+    #[command(about = "Print or copy current path")]
+    Pwd(PwdArgs),
     #[command(about = "Show prefix within repo", alias = "prf")]
     Prefix(PrefixArgs),
 }
@@ -64,8 +74,9 @@ fn main() {
             print_completions(generate_args.shell, &mut Cli::command())
         }
         Commands::LatestKernel(latest_kernel_args) => {
-            latest_kernel::check(latest_kernel_args.print);
+            latest_kernel::check(latest_kernel_args.print)
         }
+        Commands::Pwd(pwd_args) => pwd::run(pwd_args.copy),
         Commands::Prefix(prefix_args) => {
             prefix::get(prefix_args.relative_path.clone(), prefix_args.copy)
         }
