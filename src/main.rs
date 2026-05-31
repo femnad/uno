@@ -2,10 +2,12 @@ use clap::{Args, Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{Generator, Shell, generate};
 use std::io;
 
+mod args;
 mod internal;
 mod latest_kernel;
 mod prefix;
 mod pwd;
+mod qmk;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -35,6 +37,8 @@ struct LatestKernelArgs {
 struct PwdArgs {
     #[arg(short, long, help = "Copy the path to clipboard")]
     copy: bool,
+    #[arg(help = "Relate path to current dir to include")]
+    path: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -43,6 +47,27 @@ struct PrefixArgs {
     copy: bool,
     #[arg(help = "Path relative to the current path")]
     relative_path: Option<String>,
+}
+
+#[derive(Args, Debug)]
+struct LayoutArgs {
+    #[arg(help = "Keymap name")]
+    keyboard: String,
+    #[arg(short, long, default_value = "base.yml", help = "Config file")]
+    config: String,
+}
+
+#[derive(Debug, Subcommand)]
+enum QmkOp {
+    #[command(about = "Write QMK mapping")]
+    Layout(LayoutArgs)
+}
+
+#[derive(Args, Debug)]
+#[command(about = "QMK operations")]
+struct QmkArgs {
+    #[command(subcommand)]
+    qmk_op: QmkOp,
 }
 
 #[derive(Debug, Subcommand)]
@@ -55,6 +80,8 @@ enum Commands {
     Pwd(PwdArgs),
     #[command(about = "Show prefix within repo", alias = "prf")]
     Prefix(PrefixArgs),
+    #[command(about = "QMK operations")]
+    Qmk(QmkArgs),
 }
 
 fn print_completions<G: Generator>(generator: G, cmd: &mut Command) {
@@ -76,9 +103,17 @@ fn main() {
         Commands::LatestKernel(latest_kernel_args) => {
             latest_kernel::check(latest_kernel_args.print)
         }
-        Commands::Pwd(pwd_args) => pwd::run(pwd_args.copy),
+        Commands::Pwd(pwd_args) => pwd::run(pwd_args.copy, pwd_args.path.clone()),
         Commands::Prefix(prefix_args) => {
             prefix::get(prefix_args.relative_path.clone(), prefix_args.copy)
+        }
+        Commands::Qmk(qmk_args) => {
+            match &qmk_args.qmk_op {
+                QmkOp::Layout(layout_args) => {
+                    let parsed = args::Args{config: layout_args.config.clone(), keyboard: layout_args.keyboard.clone()};
+                    qmk::run(parsed)
+                }
+            }
         }
     }
 }
