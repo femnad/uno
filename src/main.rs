@@ -35,16 +35,16 @@ struct LatestKernelArgs {
 
 #[derive(Args, Debug)]
 struct PwdArgs {
-    #[arg(short, long, help = "Copy the path to clipboard")]
-    copy: bool,
     #[arg(help = "Relate path to current dir to include")]
     path: Option<String>,
+    #[arg(short, long, help = "Print the path")]
+    print: bool,
 }
 
 #[derive(Args, Debug)]
 struct PrefixArgs {
-    #[arg(short, long, help = "Copy the path to clipboard")]
-    copy: bool,
+    #[arg(short, long, help = "copy the path to clipboard")]
+    print: bool,
     #[arg(help = "Path relative to the current path")]
     relative_path: Option<String>,
 }
@@ -103,9 +103,9 @@ fn main() {
         Commands::LatestKernel(latest_kernel_args) => {
             latest_kernel::check(latest_kernel_args.print)
         }
-        Commands::Pwd(pwd_args) => pwd::run(pwd_args.copy, pwd_args.path.clone()),
+        Commands::Pwd(pwd_args) => pwd::run(pwd_args.path.clone(), pwd_args.print),
         Commands::Prefix(prefix_args) => {
-            prefix::get(prefix_args.relative_path.clone(), prefix_args.copy)
+            prefix::get(prefix_args.relative_path.clone(), prefix_args.print)
         }
         Commands::Qmk(qmk_args) => {
             match &qmk_args.qmk_op {
