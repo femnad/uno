@@ -8,7 +8,7 @@ use std::process::Command;
 const DEBIAN_KERNEL_PKG_REGEX: &str = r"linux-image-([0-9]+\.[0-9]+\.[0-9]+)";
 const KERNEL_VERSION_REGEX: &str =
     r"BOOT_IMAGE=(?:\([a-z0-9]+,[a-z0-9]+\))?/vmlinuz-([0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?)";
-const UBUNTU_KERNEL_PKG_REGEX: &str = r"linux-image-([0 - 9] + \.[0 - 9] + \.[0 -9] + - [0 - 9] +)";
+const UBUNTU_KERNEL_PKG_REGEX: &str = r"linux-image-([0-9]+\.[0-9]+\.[0-9]+-[0-9]+)";
 
 pub struct KernelInfo {
     pub latest: String,
@@ -40,7 +40,7 @@ fn get_os_id() -> Result<String, String> {
 }
 
 fn apt_kernel_packages(regex_str: &str) -> Result<Vec<String>, String> {
-    let re = Regex::new(regex_str).unwrap();
+    let kernel_regex = Regex::new(regex_str).unwrap();
     let cmd = Command::new("dpkg")
         .arg("--list")
         .output()
@@ -48,19 +48,21 @@ fn apt_kernel_packages(regex_str: &str) -> Result<Vec<String>, String> {
     let output = String::from_utf8(cmd.stdout).unwrap();
 
     let mut pkgs = vec![];
+    let by_space = Regex::new(r"\s+").unwrap();
     for line in output.lines().skip(5) {
-        let fields = line.split(" ").collect::<Vec<&str>>();
-        if fields.len() != 2 {
+        let fields = by_space.split(line).collect::<Vec<&str>>();
+        if fields.len() < 2 {
             return Err(String::from(format!(
-                "Unable to packages from line {}",
+                "Unable to extract packages from line {}",
                 line
             )));
         };
 
         let package = fields.get(1).unwrap();
-        let matches = re.find(package);
+        let matches = kernel_regex.find(package);
         if matches.is_some() {
-            pkgs.push(package.to_string());
+            pkgs.push(package.to_string().strip_prefix("linux-image-").unwrap()
+                .strip_suffix("-generic").unwrap().to_string());
         }
     }
 
@@ -105,7 +107,8 @@ fn compare_versions(a: &String, b: &String) -> Ordering {
     for (index, field) in a_fields.iter().enumerate() {
         let b_field = b_fields.get(index).unwrap();
 
-        let a_num = field.parse::<usize>().unwrap();
+        let a_num = field.parse::<usize>()
+            .expect(format!("can't parse number from `{}`", field).as_str());
         let b_num = b_field.parse::<usize>().unwrap();
 
         let cmp = a_num.cmp(&b_num);
@@ -143,6 +146,10 @@ pub fn kernel_info() -> Result<KernelInfo, String> {
     };
 
     let mut pkgs = kernel_packages?;
+    if pkgs.is_empty() {
+        return Err("Did not find any kernel packages".to_string());
+    }
+
     pkgs.sort_by(compare_versions);
     let most_recent = pkgs.last().unwrap();
 
