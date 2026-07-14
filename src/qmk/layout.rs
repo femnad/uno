@@ -2,6 +2,7 @@ use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use indexmap::IndexMap;
+use regex::Regex;
 
 const PREONIC_CHORDAL_LAYOUT: &str = r#"#ifdef CHORDAL_HOLD
 const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preonic_grid(
@@ -16,11 +17,13 @@ const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preoni
 
 #[derive(Debug, Deserialize)]
 struct Config {
-    custom_keycodes: Vec<String>,
-    custom_keys: IndexMap<String, String>,
+    custom_keys: Vec<String>,
     header_definitions: IndexMap<String, String>,
-    layers: Vec<String>,
     layouts: IndexMap<String, Vec<String>>,
+}
+
+fn get_key(key: String) -> String {
+    format!("KC_{}", key.to_ascii_uppercase())
 }
 
 pub fn write_layout(keyboard: String, config: String) {
@@ -33,6 +36,7 @@ pub fn write_layout(keyboard: String, config: String) {
         yaml_serde::from_str(&contents).expect(format!("could not parse {}", contents).as_str());
 
     let keyboard: Box<dyn Keyboard> = match keyboard.as_str() {
+        "ergodox-ez" => Box::new(ErgodoxEz),
         "moonlander" => Box::new(Moonlander),
         "preonic" => Box::new(Preonic),
         _ => {
@@ -48,17 +52,9 @@ pub fn write_layout(keyboard: String, config: String) {
         .open("keymap-new.c")
         .unwrap();
 
-    for (key, value) in config.custom_keys {
-        let key = key.to_ascii_uppercase();
-        let value = value.to_ascii_uppercase();
-        out.write(format!("#define {} {}\n", key, value).as_bytes())
-            .unwrap();
-    }
-    out.write("\n".as_bytes()).unwrap();
-
     let prefix = keyboard.custom_keycode_prefix().unwrap_or("custom".to_string());
     out.write(format!("enum {}_keycodes {{\n", prefix).as_bytes()).unwrap();
-    for (idx, code) in config.custom_keycodes.iter().enumerate() {
+    for (idx, code) in config.custom_keys.iter().enumerate() {
         let code = code.to_ascii_uppercase();
         let suffix = if idx == 0 {
             " = SAFE_RANGE,\n"
@@ -69,15 +65,6 @@ pub fn write_layout(keyboard: String, config: String) {
         out.write(line.as_bytes()).unwrap();
     }
     out.write("};\n\n".as_bytes()).unwrap();
-
-    if let Some(layer_name) = keyboard.layer_name() {
-        out.write(format!("enum {}_layers {{\n", layer_name).as_bytes())
-            .unwrap();
-        for layer in config.layers {
-            out.write(format!("  {},\n", layer).as_bytes()).unwrap();
-        }
-        out.write("}}\n\n".as_bytes()).unwrap();
-    }
 
     out.write(chordal_hold.as_bytes()).unwrap();
 
@@ -99,6 +86,19 @@ pub fn write_layout(keyboard: String, config: String) {
         let line = format!("#define {}{}\n", key, suffix);
         header.write(line.as_bytes()).unwrap();
     }
+
+    let whitespace = Regex::new(r"\s+").unwrap();
+    for (layer, rows) in config.layouts {
+        out.write(format!("[{}] LAYOUT(\n", layer).as_bytes()).unwrap();
+        for row in rows {
+            let cols = whitespace.split(row.as_str());
+            for col in cols {
+                let col = get_key(col.to_string());
+                out.write(col.as_bytes()).unwrap();
+            }
+        }
+        out.write(")\n".as_bytes()).unwrap();
+    }
 }
 
 trait Keyboard {
@@ -106,28 +106,32 @@ trait Keyboard {
     fn custom_keycode_prefix(&self) -> Option<String> {
         None
     }
-    fn layer_name(&self) -> Option<String> {
-        None
+}
+
+struct ErgodoxEz;
+
+impl Keyboard for ErgodoxEz {
+    fn chordal_hold_layout(&self) -> String {
+        "".to_string()
     }
 }
 
-struct Preonic;
-impl Keyboard for Preonic {
-    fn chordal_hold_layout(&self) -> String {
-        PREONIC_CHORDAL_LAYOUT.to_string()
-    }
-    fn custom_keycode_prefix(&self) -> Option<String> {
-        Option::from("preonic".to_string())
-    }
-    fn layer_name(&self) -> Option<String> {
-        Option::from("preonic".to_string())
-    }
-}
 
 struct Moonlander;
 
 impl Keyboard for Moonlander {
     fn chordal_hold_layout(&self) -> String {
         "".to_string()
+    }
+}
+
+struct Preonic;
+
+impl Keyboard for Preonic {
+    fn chordal_hold_layout(&self) -> String {
+        PREONIC_CHORDAL_LAYOUT.to_string()
+    }
+    fn custom_keycode_prefix(&self) -> Option<String> {
+        Option::from("preonic".to_string())
     }
 }
