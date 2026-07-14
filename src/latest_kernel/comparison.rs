@@ -61,8 +61,15 @@ fn apt_kernel_packages(regex_str: &str) -> Result<Vec<String>, String> {
         let package = fields.get(1).unwrap();
         let matches = kernel_regex.find(package);
         if matches.is_some() {
-            pkgs.push(package.to_string().strip_prefix("linux-image-").unwrap()
-                .strip_suffix("-generic").unwrap().to_string());
+            pkgs.push(
+                package
+                    .to_string()
+                    .strip_prefix("linux-image-")
+                    .unwrap()
+                    .strip_suffix("-generic")
+                    .unwrap()
+                    .to_string(),
+            );
         }
     }
 
@@ -107,7 +114,8 @@ fn compare_versions(a: &String, b: &String) -> Ordering {
     for (index, field) in a_fields.iter().enumerate() {
         let b_field = b_fields.get(index).unwrap();
 
-        let a_num = field.parse::<usize>()
+        let a_num = field
+            .parse::<usize>()
             .expect(format!("can't parse number from `{}`", field).as_str());
         let b_num = b_field.parse::<usize>().unwrap();
 

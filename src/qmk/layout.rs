@@ -1,8 +1,8 @@
+use indexmap::IndexMap;
+use regex::Regex;
 use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use indexmap::IndexMap;
-use regex::Regex;
 
 const PREONIC_CHORDAL_LAYOUT: &str = r#"#ifdef CHORDAL_HOLD
 const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preonic_grid(
@@ -52,15 +52,14 @@ pub fn write_layout(keyboard: String, config: String) {
         .open("keymap-new.c")
         .unwrap();
 
-    let prefix = keyboard.custom_keycode_prefix().unwrap_or("custom".to_string());
-    out.write(format!("enum {}_keycodes {{\n", prefix).as_bytes()).unwrap();
+    let prefix = keyboard
+        .custom_keycode_prefix()
+        .unwrap_or("custom".to_string());
+    out.write(format!("enum {}_keycodes {{\n", prefix).as_bytes())
+        .unwrap();
     for (idx, code) in config.custom_keys.iter().enumerate() {
         let code = code.to_ascii_uppercase();
-        let suffix = if idx == 0 {
-            " = SAFE_RANGE,\n"
-        } else {
-            ",\n"
-        };
+        let suffix = if idx == 0 { " = SAFE_RANGE,\n" } else { ",\n" };
         let line = format!("  {}{}", code, suffix);
         out.write(line.as_bytes()).unwrap();
     }
@@ -73,7 +72,7 @@ pub fn write_layout(keyboard: String, config: String) {
         .write(true)
         .truncate(true)
         .open("config-new.h")
-    .unwrap();
+        .unwrap();
 
     for (key, value) in config.header_definitions {
         let key = key.to_ascii_uppercase();
@@ -89,7 +88,8 @@ pub fn write_layout(keyboard: String, config: String) {
 
     let whitespace = Regex::new(r"\s+").unwrap();
     for (layer, rows) in config.layouts {
-        out.write(format!("[{}] LAYOUT(\n", layer).as_bytes()).unwrap();
+        out.write(format!("[{}] LAYOUT(\n", layer).as_bytes())
+            .unwrap();
         for row in rows {
             let cols = whitespace.split(row.as_str());
             for col in cols {
@@ -115,7 +115,6 @@ impl Keyboard for ErgodoxEz {
         "".to_string()
     }
 }
-
 
 struct Moonlander;
 

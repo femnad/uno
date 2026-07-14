@@ -60,7 +60,7 @@ struct LayoutArgs {
 #[derive(Debug, Subcommand)]
 enum QmkOp {
     #[command(about = "Write QMK mapping")]
-    Layout(LayoutArgs)
+    Layout(LayoutArgs),
 }
 
 #[derive(Args, Debug)]
@@ -107,13 +107,14 @@ fn main() {
         Commands::Prefix(prefix_args) => {
             prefix::get(prefix_args.relative_path.clone(), prefix_args.print)
         }
-        Commands::Qmk(qmk_args) => {
-            match &qmk_args.qmk_op {
-                QmkOp::Layout(layout_args) => {
-                    let parsed = args::Args{config: layout_args.config.clone(), keyboard: layout_args.keyboard.clone()};
-                    qmk::run(parsed)
-                }
+        Commands::Qmk(qmk_args) => match &qmk_args.qmk_op {
+            QmkOp::Layout(layout_args) => {
+                let parsed = args::Args {
+                    config: layout_args.config.clone(),
+                    keyboard: layout_args.keyboard.clone(),
+                };
+                qmk::run(parsed)
             }
-        }
+        },
     }
 }
