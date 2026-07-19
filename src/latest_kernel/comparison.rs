@@ -39,7 +39,7 @@ fn get_os_id() -> Result<String, String> {
     Err(String::from("Unable to determine OS ID"))
 }
 
-fn apt_kernel_packages(regex_str: &str) -> Result<Vec<String>, String> {
+fn apt_kernel_packages(regex_str: &str, split_suffix: &str) -> Result<Vec<String>, String> {
     let kernel_regex = Regex::new(regex_str).unwrap();
     let cmd = Command::new("dpkg")
         .arg("--list")
@@ -66,8 +66,9 @@ fn apt_kernel_packages(regex_str: &str) -> Result<Vec<String>, String> {
                     .to_string()
                     .strip_prefix("linux-image-")
                     .unwrap()
-                    .strip_suffix("-generic")
-                    .unwrap()
+                    .split(split_suffix)
+                    .next()
+                    .expect("Cannot determine Linux package version")
                     .to_string(),
             );
         }
@@ -147,9 +148,9 @@ pub fn kernel_info() -> Result<KernelInfo, String> {
     };
 
     let kernel_packages = match os_id.as_str() {
-        "debian" => apt_kernel_packages(DEBIAN_KERNEL_PKG_REGEX),
+        "debian" => apt_kernel_packages(DEBIAN_KERNEL_PKG_REGEX, "+"),
         "fedora" => dnf_kernel_packages(),
-        "ubuntu" => apt_kernel_packages(UBUNTU_KERNEL_PKG_REGEX),
+        "ubuntu" => apt_kernel_packages(UBUNTU_KERNEL_PKG_REGEX, "-generic"),
         _ => Err(format!("Unknown OS ID {}", os_id)),
     };
 
