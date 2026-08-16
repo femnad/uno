@@ -43,7 +43,7 @@ struct PwdArgs {
 
 #[derive(Args, Debug)]
 struct PrefixArgs {
-    #[arg(short, long, help = "copy the path to clipboard")]
+    #[arg(short, long, help = "Print the path")]
     print: bool,
     #[arg(help = "Path relative to the current path")]
     relative_path: Option<String>,
@@ -76,9 +76,9 @@ enum Commands {
     Generate(GenerateArgs),
     #[command(about = "Check if latest kernel is running", alias = "lk")]
     LatestKernel(LatestKernelArgs),
-    #[command(about = "Print or copy current path")]
+    #[command(about = "Copy current path")]
     Pwd(PwdArgs),
-    #[command(about = "Show prefix within repo", alias = "prf")]
+    #[command(about = "Copy prefix within repo", alias = "prf")]
     Prefix(PrefixArgs),
     #[command(about = "QMK operations")]
     Qmk(QmkArgs),

@@ -1,9 +1,8 @@
 pub mod prefix;
 
 use crate::prefix::prefix::get_prefix;
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use crate::internal;
 
 pub fn get(reference: Option<String>, print: bool) {
     let prefix = match get_prefix() {
@@ -25,10 +24,7 @@ pub fn get(reference: Option<String>, print: bool) {
         return;
     }
 
-    let cmd = Command::new("xclip").stdin(Stdio::piped()).spawn();
-    if let Some(mut stdin) = cmd.unwrap().stdin.take() {
-        stdin.write_all(resolved.as_bytes()).unwrap();
-    }
+    internal::copy(&resolved);
 
     if print {
         println!("{}", resolved);

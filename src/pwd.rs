@@ -13,7 +13,7 @@ pub fn run(path: Option<String>, print: bool) {
         cwd
     };
 
-    internal::copy_to_clipboard(cwd.clone());
+    internal::copy(&cwd);
 
     if print {
         println!("{}", cwd);
