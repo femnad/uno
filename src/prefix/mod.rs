@@ -24,6 +24,7 @@ pub fn get(reference: Option<String>, print: bool) {
         return;
     }
 
+    let resolved = internal::normalize(&resolved);
     internal::copy(&resolved);
 
     if print {

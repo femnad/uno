@@ -13,6 +13,7 @@ pub fn run(path: Option<String>, print: bool) {
         cwd
     };
 
+    let cwd = internal::normalize(&cwd);
     internal::copy(&cwd);
 
     if print {

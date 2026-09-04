@@ -36,3 +36,8 @@ pub fn copy(content: &String) {
     copy_to_clipboard(content);
     copy_tmux_buffer(content);
 }
+
+pub fn normalize(path: &String) -> String {
+    let home = env::var("HOME").unwrap();
+    path.replace(home.as_str(), "~")
+}
