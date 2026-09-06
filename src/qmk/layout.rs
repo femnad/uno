@@ -1,29 +1,23 @@
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::process::exit;
 
+const CHORDAL_LEFT: &str = "'L'";
+const CHORDAL_RIGHT: &str = "'R'";
+const CHORDAL_NEUTRAL: &str = "'*'";
+const CHORDAL_CHAR_LENGTH: usize = 3;
 const COL_LENGTH: usize = 9;
 const HEADER: &str = r#"#include QMK_KEYBOARD_H
 #include "version.h"
 "#;
+const KC_TRANSPARENT: &str = "________";
 const LAYOUT_START: &str = "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {";
 const LAYOUT_END: &str = "};";
 const TRANSPARENT_KEY: &str = "_";
-
-const PREONIC_CHORDAL_LAYOUT: &str = r#"#ifdef CHORDAL_HOLD
-const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preonic_grid(
-    'L', 'L', 'L', 'L', 'L', 'L',  'R', 'R', 'R', 'R', 'R', 'R',
-    'L', 'L', 'L', 'L', 'L', 'L',  'R', 'R', 'R', 'R', 'R', 'R',
-    'L', 'L', 'L', 'L', 'L', 'L',  'R', 'R', 'R', 'R', 'R', 'R',
-    'L', 'L', 'L', 'L', 'L', 'L',  'R', 'R', 'R', 'R', 'R', 'R',
-    '*', '*', '*', '*', '*', '*',  '*', '*', '*', '*', '*', '*'
-);
-#endif
-"#;
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -38,12 +32,14 @@ enum Column {
     Occupied(usize),
 }
 
-fn get_key(key: String) -> String {
-    format!("KC_{}", key.to_ascii_uppercase())
-}
-
 fn write_to_file(out: &mut File, s: &str) {
     out.write(s.as_bytes()).unwrap();
+}
+
+fn write_indented(out: &mut File, s: &str, indent: usize) {
+    let mut indented = String::from(" ".repeat(indent));
+    indented.push_str(s);
+    write_new_lined(out, &indented);
 }
 
 fn write_new_lined(out: &mut File, s: &str) {
@@ -73,6 +69,15 @@ fn write_commented(out: &mut File, s: &str) {
     }
 }
 
+fn get_qmk_key(value: &str) -> String {
+    let value = value.to_ascii_uppercase();
+    if value == TRANSPARENT_KEY {
+        return KC_TRANSPARENT.to_string();
+    }
+
+    format!("KC_{}", value)
+}
+
 pub fn write_layout(keyboard: String, config: String) {
     let file = File::open(config.clone());
     if file.is_err() {
@@ -97,7 +102,6 @@ pub fn write_layout(keyboard: String, config: String) {
             exit(1);
         }
     };
-    let chordal_hold = keyboard.chordal_hold_layout();
 
     let mut out = OpenOptions::new()
         .create(true)
@@ -128,23 +132,6 @@ pub fn write_layout(keyboard: String, config: String) {
     }
     write_to_file(&mut out, "\n");
 
-    write_new_lined(&mut out, LAYOUT_START);
-
-    for (layer, rows) in &config.layouts {
-        let mut layer_str = String::new();
-        layer_str.push_str(format!("Layer: {}\n", layer.to_ascii_uppercase()).as_str());
-
-        let layer_map = keyboard.layer_map(rows);
-        layer_str.push_str(format!("{}\n", layer_map).as_str());
-
-        write_commented(&mut out, format!("{}\n", layer_str).as_str());
-    }
-
-    write_new_lined(&mut out, LAYOUT_END);
-    write_to_file(&mut out, "\n");
-
-    write_to_file(&mut out, PREONIC_CHORDAL_LAYOUT);
-
     let prefix = keyboard
         .custom_keycode_prefix()
         .unwrap_or("custom".to_string());
@@ -159,7 +146,39 @@ pub fn write_layout(keyboard: String, config: String) {
     }
     out.write("};\n\n".as_bytes()).unwrap();
 
-    out.write(chordal_hold.as_bytes()).unwrap();
+    write_new_lined(&mut out, LAYOUT_START);
+
+    let by_whitespace = Regex::new(r"\s+").unwrap();
+    for (layer, rows) in &config.layouts {
+        write_to_file(&mut out, "\n");
+        let layer_upper = layer.to_ascii_uppercase();
+        let mut layer_str = String::new();
+        layer_str.push_str(format!("Layer: {}\n", layer_upper).as_str());
+
+        let layer_map = keyboard.layer_map(rows);
+        layer_str.push_str(format!("{}\n", layer_map).as_str());
+
+        write_commented(&mut out, format!("{}\n", layer_str).as_str());
+
+        write_new_lined(
+            &mut out,
+            format!("[{}] = LAYOUT_{}(", layer_upper, keyboard.layout_suffix()).as_str(),
+        );
+        for row in rows {
+            let cols = by_whitespace
+                .split(&row)
+                .map(|c| get_qmk_key(c))
+                .collect::<Vec<_>>();
+            let col_out = cols.join(", ");
+            write_indented(&mut out, format!("{},", &col_out).as_str(), 8)
+        }
+        write_new_lined(&mut out, "),");
+    }
+
+    write_new_lined(&mut out, LAYOUT_END);
+    write_to_file(&mut out, "\n");
+
+    write_to_file(&mut out, keyboard.chordal_hold_layout().as_str());
 
     let mut header = OpenOptions::new()
         .create(true)
@@ -179,20 +198,6 @@ pub fn write_layout(keyboard: String, config: String) {
         let line = format!("#define {}{}\n", key, suffix);
         header.write(line.as_bytes()).unwrap();
     }
-
-    let whitespace = Regex::new(r"\s+").unwrap();
-    for (layer, rows) in config.layouts {
-        out.write(format!("[{}] LAYOUT(\n", layer).as_bytes())
-            .unwrap();
-        for row in rows {
-            let cols = whitespace.split(row.as_str());
-            for col in cols {
-                let col = get_key(col.to_string());
-                out.write(col.as_bytes()).unwrap();
-            }
-        }
-        out.write(")\n".as_bytes()).unwrap();
-    }
 }
 
 fn format_value(value: &str) -> String {
@@ -206,14 +211,87 @@ fn format_value(value: &str) -> String {
 }
 
 trait Keyboard {
-    fn chordal_hold_layout(&self) -> String;
     fn custom_keycode_prefix(&self) -> Option<String> {
         None
     }
 
+    fn layout_suffix(&self) -> String;
+
     fn max_length(&self) -> usize;
 
     fn row_map(&self) -> HashMap<usize, Vec<Column>>;
+
+    fn rows(&self) -> usize;
+
+    fn thumb_rows(&self) -> HashSet<usize>;
+
+    fn chordal_hold_layout(&self) -> String {
+        let row_map = self.row_map();
+        let mut out = String::new();
+        let length = self.max_length();
+        let half = length / 2;
+        let thumb_rows = self.thumb_rows();
+
+        for row in 0..self.rows() {
+            if !row_map.contains_key(&row) {
+                let left = vec![CHORDAL_LEFT; half];
+                let right = vec![CHORDAL_RIGHT; half];
+                let both = [left, right].concat();
+                let joined = both.join(", ");
+                out.push_str(format!("    {},\n", joined).as_str());
+                continue;
+            }
+
+            let row_occupancy = row_map.get(&row).unwrap();
+            let mut index = 0;
+            for (idx, column) in row_occupancy.iter().enumerate() {
+                let num_cols = row_occupancy.len();
+
+                if index == 0 {
+                    out.push_str(" ".repeat(4).as_str());
+                } else {
+                    // out.push_str(",");
+                }
+
+                match column {
+                    Column::Empty(cols) => {
+                        if idx == num_cols - 1 {
+                            continue;
+                        }
+
+                        let empty_cols = vec![" ".repeat(CHORDAL_CHAR_LENGTH); *cols];
+                        out.push_str(empty_cols.join("  ").as_str());
+                        out.push_str(" ");
+                        if idx < num_cols - 1 {
+                            out.push_str(" ");
+                        }
+                        index += cols;
+                    }
+                    Column::Occupied(cols) => {
+                        let mut occupied_cols = vec![];
+                        for i in index..(index + cols) {
+                            let out_char = if thumb_rows.contains(&row) {
+                                CHORDAL_NEUTRAL
+                            } else if i < half {
+                                CHORDAL_LEFT
+                            } else {
+                                CHORDAL_RIGHT
+                            };
+                            occupied_cols.push(out_char)
+                        }
+                        out.push_str(occupied_cols.join(", ").as_str());
+                        out.push_str(",");
+                        if idx < num_cols - 1 {
+                            out.push_str(" ");
+                        }
+                        index += cols;
+                    }
+                }
+            }
+            out.push_str("\n");
+        }
+        out
+    }
 
     fn layer_map(&self, layer: &Vec<String>) -> String {
         let row_map = self.row_map();
@@ -293,8 +371,8 @@ trait Keyboard {
 struct ErgodoxEz;
 
 impl Keyboard for ErgodoxEz {
-    fn chordal_hold_layout(&self) -> String {
-        "".to_string()
+    fn layout_suffix(&self) -> String {
+        todo!()
     }
 
     fn max_length(&self) -> usize {
@@ -304,13 +382,21 @@ impl Keyboard for ErgodoxEz {
     fn row_map(&self) -> HashMap<usize, Vec<Column>> {
         todo!()
     }
+
+    fn rows(&self) -> usize {
+        todo!()
+    }
+
+    fn thumb_rows(&self) -> HashSet<usize> {
+        todo!()
+    }
 }
 
 struct Moonlander;
 
 impl Keyboard for Moonlander {
-    fn chordal_hold_layout(&self) -> String {
-        "".to_string()
+    fn layout_suffix(&self) -> String {
+        "moonlander".to_string()
     }
 
     fn max_length(&self) -> usize {
@@ -339,16 +425,25 @@ impl Keyboard for Moonlander {
             ),
         ])
     }
+
+    fn rows(&self) -> usize {
+        6
+    }
+
+    fn thumb_rows(&self) -> HashSet<usize> {
+        HashSet::from([6])
+    }
 }
 
 struct Preonic;
 
 impl Keyboard for Preonic {
-    fn chordal_hold_layout(&self) -> String {
-        PREONIC_CHORDAL_LAYOUT.to_string()
-    }
     fn custom_keycode_prefix(&self) -> Option<String> {
         Option::from("preonic".to_string())
+    }
+
+    fn layout_suffix(&self) -> String {
+        todo!()
     }
 
     fn max_length(&self) -> usize {
@@ -356,6 +451,14 @@ impl Keyboard for Preonic {
     }
 
     fn row_map(&self) -> HashMap<usize, Vec<Column>> {
+        todo!()
+    }
+
+    fn rows(&self) -> usize {
+        todo!()
+    }
+
+    fn thumb_rows(&self) -> HashSet<usize> {
         todo!()
     }
 }
