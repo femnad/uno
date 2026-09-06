@@ -12,6 +12,8 @@ const HEADER: &str = r#"#include QMK_KEYBOARD_H
 "#;
 const LAYOUT_START: &str = "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {";
 const LAYOUT_END: &str = "};";
+const TRANSPARENT_KEY: &str = "_";
+
 const PREONIC_CHORDAL_LAYOUT: &str = r#"#ifdef CHORDAL_HOLD
 const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preonic_grid(
     'L', 'L', 'L', 'L', 'L', 'L',  'R', 'R', 'R', 'R', 'R', 'R',
@@ -91,7 +93,8 @@ pub fn write_layout(keyboard: String, config: String) {
         "moonlander" => Box::new(Moonlander),
         "preonic" => Box::new(Preonic),
         _ => {
-            panic!("unknown keyboard {}", keyboard);
+            println!("unknown keyboard {}", keyboard);
+            exit(1);
         }
     };
     let chordal_hold = keyboard.chordal_hold_layout();
@@ -129,7 +132,7 @@ pub fn write_layout(keyboard: String, config: String) {
 
     for (layer, rows) in &config.layouts {
         let mut layer_str = String::new();
-        layer_str.push_str(format!("Layer: {}\n", layer).as_str());
+        layer_str.push_str(format!("Layer: {}\n", layer.to_ascii_uppercase()).as_str());
 
         let layer_map = keyboard.layer_map(rows);
         layer_str.push_str(format!("{}\n", layer_map).as_str());
@@ -147,6 +150,7 @@ pub fn write_layout(keyboard: String, config: String) {
         .unwrap_or("custom".to_string());
     out.write(format!("enum {}_keycodes {{\n", prefix).as_bytes())
         .unwrap();
+
     for (idx, code) in config.custom_keys.iter().enumerate() {
         let code = code.to_ascii_uppercase();
         let suffix = if idx == 0 { " = SAFE_RANGE,\n" } else { ",\n" };
@@ -191,6 +195,16 @@ pub fn write_layout(keyboard: String, config: String) {
     }
 }
 
+fn format_value(value: &str) -> String {
+    let value = value.to_ascii_uppercase();
+    let value = if value == TRANSPARENT_KEY {
+        ""
+    } else {
+        value.as_str()
+    };
+    format!("{:^COL_LENGTH$.COL_LENGTH$}", value)
+}
+
 trait Keyboard {
     fn chordal_hold_layout(&self) -> String;
     fn custom_keycode_prefix(&self) -> Option<String> {
@@ -208,48 +222,67 @@ trait Keyboard {
         let full_boundary = vec![col_boundry; self.max_length()];
         let full_boundary = format!("+{}+\n", full_boundary.join("+"));
 
-        let mut out = String::new();
+        let mut out = String::from(&full_boundary);
         let col_split = Regex::new(r"\s+").unwrap();
         for (idx, row) in layer.iter().enumerate() {
             let mut cols = col_split.split(row).collect::<Vec<_>>();
 
             let col_map = row_map.get(&idx);
             if col_map.is_none() {
-                out.push_str(full_boundary.as_str());
-                let cols = cols.iter()
-                    .map(|col| format!("{:^COL_LENGTH$}", col)).collect::<Vec<_>>();
+                let cols = cols.iter().map(|col| format_value(col)).collect::<Vec<_>>();
                 let col_out = cols.join("|");
                 out.push_str(format!("|{}|\n", &col_out).as_str());
+                out.push_str(full_boundary.as_str());
                 continue;
             };
 
-            let col_map = col_map
-                .expect(format!("error finding column map for row {}", idx).as_str());
-            if col_map.first().is_some_and(|c| matches!(c, Column::Empty(_))) {
-                out.push_str(" ");
+            let col_map =
+                col_map.expect(format!("error finding column map for row {}", idx).as_str());
+            let mut row_out = String::new();
+            let mut boundary_out = String::new();
+
+            if col_map
+                .first()
+                .is_some_and(|c| matches!(c, Column::Empty(_)))
+            {
+                boundary_out.push_str(" ");
+                row_out.push_str(" ");
             }
 
-            for col in col_map {
+            let num_cols = col_map.len();
+            for (idx, col) in col_map.iter().enumerate() {
                 match col {
                     Column::Empty(size) => {
+                        if idx == num_cols - 1 {
+                            continue;
+                        }
+
                         let mut out_cols: Vec<String> = Vec::new();
                         for _ in 0..*size {
                             out_cols.push(" ".repeat(COL_LENGTH));
                         }
                         let col_out = out_cols.join(" ");
-                        out.push_str(col_out.as_str());
+                        row_out.push_str(col_out.as_str());
+                        boundary_out.push_str(col_out.as_str());
                     }
                     Column::Occupied(size) => {
                         let mut out_cols: Vec<String> = Vec::new();
+                        let mut boundary_cols: Vec<String> = Vec::new();
                         for _ in 0..*size {
                             let col_out = cols.pop().expect("");
-                            out_cols.push(format!("{:^COL_LENGTH$}", col_out));
+                            out_cols.push(format_value(col_out));
+                            boundary_cols.push("-".repeat(COL_LENGTH));
                         }
                         let col_out = out_cols.join("|");
-                        out.push_str(format!("|{}|", &col_out).as_str());
+                        row_out.push_str(format!("|{}|", &col_out).as_str());
+                        let boundary = boundary_cols.join("+");
+                        boundary_out.push_str(format!("+{}+", &boundary).as_str());
                     }
                 }
             }
+            out.push_str(row_out.as_str());
+            out.push_str("\n");
+            out.push_str(boundary_out.as_str());
             out.push_str("\n");
         }
         out.push_str("\n");
