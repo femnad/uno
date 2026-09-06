@@ -6,7 +6,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::process::exit;
 
-const COL_LENGTH: usize = 8;
+const COL_LENGTH: usize = 9;
 const HEADER: &str = r#"#include QMK_KEYBOARD_H
 #include "version.h"
 "#;
@@ -197,10 +197,16 @@ trait Keyboard {
         None
     }
 
+    fn max_length(&self) -> usize;
+
     fn row_map(&self) -> HashMap<usize, Vec<Column>>;
 
     fn layer_map(&self, layer: &Vec<String>) -> String {
         let row_map = self.row_map();
+        let col_boundry = "-".repeat(COL_LENGTH);
+
+        let full_boundary = vec![col_boundry; self.max_length()];
+        let full_boundary = format!("+{}+\n", full_boundary.join("+"));
 
         let mut out = String::new();
         let col_split = Regex::new(r"\s+").unwrap();
@@ -209,29 +215,44 @@ trait Keyboard {
 
             let col_map = row_map.get(&idx);
             if col_map.is_none() {
+                out.push_str(full_boundary.as_str());
+                let cols = cols.iter()
+                    .map(|col| format!("{:^COL_LENGTH$}", col)).collect::<Vec<_>>();
                 let col_out = cols.join("|");
-                out.push_str(format!("{}\n", &col_out).as_str());
+                out.push_str(format!("|{}|\n", &col_out).as_str());
                 continue;
             };
 
-            for col in col_map.expect(format!("error finding column map for row {}", idx).as_str())
-            {
+            let col_map = col_map
+                .expect(format!("error finding column map for row {}", idx).as_str());
+            if col_map.first().is_some_and(|c| matches!(c, Column::Empty(_))) {
+                out.push_str(" ");
+            }
+
+            for col in col_map {
                 match col {
                     Column::Empty(size) => {
+                        let mut out_cols: Vec<String> = Vec::new();
                         for _ in 0..*size {
-                            out.push_str(" ".repeat(COL_LENGTH).as_str());
+                            out_cols.push(" ".repeat(COL_LENGTH));
                         }
+                        let col_out = out_cols.join(" ");
+                        out.push_str(col_out.as_str());
                     }
                     Column::Occupied(size) => {
+                        let mut out_cols: Vec<String> = Vec::new();
                         for _ in 0..*size {
                             let col_out = cols.pop().expect("");
-                            out.push_str(format!("{}|", col_out).as_str());
+                            out_cols.push(format!("{:^COL_LENGTH$}", col_out));
                         }
+                        let col_out = out_cols.join("|");
+                        out.push_str(format!("|{}|", &col_out).as_str());
                     }
                 }
             }
             out.push_str("\n");
         }
+        out.push_str("\n");
         out
     }
 }
@@ -241,6 +262,10 @@ struct ErgodoxEz;
 impl Keyboard for ErgodoxEz {
     fn chordal_hold_layout(&self) -> String {
         "".to_string()
+    }
+
+    fn max_length(&self) -> usize {
+        todo!()
     }
 
     fn row_map(&self) -> HashMap<usize, Vec<Column>> {
@@ -253,6 +278,10 @@ struct Moonlander;
 impl Keyboard for Moonlander {
     fn chordal_hold_layout(&self) -> String {
         "".to_string()
+    }
+
+    fn max_length(&self) -> usize {
+        14
     }
 
     fn row_map(&self) -> HashMap<usize, Vec<Column>> {
@@ -270,7 +299,7 @@ impl Keyboard for Moonlander {
                 vec![
                     Column::Empty(3),
                     Column::Occupied(3),
-                    Column::Empty(3),
+                    Column::Empty(2),
                     Column::Occupied(3),
                     Column::Empty(3),
                 ],
@@ -288,6 +317,11 @@ impl Keyboard for Preonic {
     fn custom_keycode_prefix(&self) -> Option<String> {
         Option::from("preonic".to_string())
     }
+
+    fn max_length(&self) -> usize {
+        todo!()
+    }
+
     fn row_map(&self) -> HashMap<usize, Vec<Column>> {
         todo!()
     }
