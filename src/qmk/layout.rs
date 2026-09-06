@@ -1,10 +1,12 @@
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::process::exit;
 
+const COL_LENGTH: usize = 8;
 const HEADER: &str = r#"#include QMK_KEYBOARD_H
 #include "version.h"
 "#;
@@ -27,6 +29,11 @@ struct Config {
     custom_keys: Vec<String>,
     header_definitions: IndexMap<String, String>,
     layouts: IndexMap<String, Vec<String>>,
+}
+
+enum Column {
+    Empty(usize),
+    Occupied(usize),
 }
 
 fn get_key(key: String) -> String {
@@ -72,7 +79,8 @@ pub fn write_layout(keyboard: String, config: String) {
     }
 
     let mut contents = String::new();
-    file.unwrap().read_to_string(&mut contents)
+    file.unwrap()
+        .read_to_string(&mut contents)
         .expect(format!("cannot read {}", config).as_str());
 
     let config: Config =
@@ -98,14 +106,22 @@ pub fn write_layout(keyboard: String, config: String) {
     write_new_lined(&mut out, HEADER);
 
     for (idx, layer) in config.layouts.keys().enumerate() {
-        write_to_file(&mut out, &format!("#define {} {}\n",
-                                         layer.to_ascii_uppercase(), idx));
+        write_to_file(
+            &mut out,
+            &format!("#define {} {}\n", layer.to_ascii_uppercase(), idx),
+        );
     }
     write_to_file(&mut out, "\n");
 
     for (key, value) in config.custom_definitions {
-        write_to_file(&mut out, &format!("#define {} {}\n",
-                                         key.to_ascii_uppercase(), value.to_ascii_uppercase()));
+        write_to_file(
+            &mut out,
+            &format!(
+                "#define {} {}\n",
+                key.to_ascii_uppercase(),
+                value.to_ascii_uppercase()
+            ),
+        );
     }
     write_to_file(&mut out, "\n");
 
@@ -114,9 +130,10 @@ pub fn write_layout(keyboard: String, config: String) {
     for (layer, rows) in &config.layouts {
         let mut layer_str = String::new();
         layer_str.push_str(format!("Layer: {}\n", layer).as_str());
-        for row in rows {
-            layer_str.push_str(format!("{}\n", row).as_str());
-        }
+
+        let layer_map = keyboard.layer_map(rows);
+        layer_str.push_str(format!("{}\n", layer_map).as_str());
+
         write_commented(&mut out, format!("{}\n", layer_str).as_str());
     }
 
@@ -179,6 +196,44 @@ trait Keyboard {
     fn custom_keycode_prefix(&self) -> Option<String> {
         None
     }
+
+    fn row_map(&self) -> HashMap<usize, Vec<Column>>;
+
+    fn layer_map(&self, layer: &Vec<String>) -> String {
+        let row_map = self.row_map();
+
+        let mut out = String::new();
+        let col_split = Regex::new(r"\s+").unwrap();
+        for (idx, row) in layer.iter().enumerate() {
+            let mut cols = col_split.split(row).collect::<Vec<_>>();
+
+            let col_map = row_map.get(&idx);
+            if col_map.is_none() {
+                let col_out = cols.join("|");
+                out.push_str(format!("{}\n", &col_out).as_str());
+                continue;
+            };
+
+            for col in col_map.expect(format!("error finding column map for row {}", idx).as_str())
+            {
+                match col {
+                    Column::Empty(size) => {
+                        for _ in 0..*size {
+                            out.push_str(" ".repeat(COL_LENGTH).as_str());
+                        }
+                    }
+                    Column::Occupied(size) => {
+                        for _ in 0..*size {
+                            let col_out = cols.pop().expect("");
+                            out.push_str(format!("{}|", col_out).as_str());
+                        }
+                    }
+                }
+            }
+            out.push_str("\n");
+        }
+        out
+    }
 }
 
 struct ErgodoxEz;
@@ -187,6 +242,10 @@ impl Keyboard for ErgodoxEz {
     fn chordal_hold_layout(&self) -> String {
         "".to_string()
     }
+
+    fn row_map(&self) -> HashMap<usize, Vec<Column>> {
+        todo!()
+    }
 }
 
 struct Moonlander;
@@ -194,6 +253,29 @@ struct Moonlander;
 impl Keyboard for Moonlander {
     fn chordal_hold_layout(&self) -> String {
         "".to_string()
+    }
+
+    fn row_map(&self) -> HashMap<usize, Vec<Column>> {
+        HashMap::from([
+            (
+                3,
+                vec![Column::Occupied(6), Column::Empty(2), Column::Occupied(6)],
+            ),
+            (
+                4,
+                vec![Column::Occupied(6), Column::Empty(2), Column::Occupied(6)],
+            ),
+            (
+                5,
+                vec![
+                    Column::Empty(3),
+                    Column::Occupied(3),
+                    Column::Empty(3),
+                    Column::Occupied(3),
+                    Column::Empty(3),
+                ],
+            ),
+        ])
     }
 }
 
@@ -205,5 +287,8 @@ impl Keyboard for Preonic {
     }
     fn custom_keycode_prefix(&self) -> Option<String> {
         Option::from("preonic".to_string())
+    }
+    fn row_map(&self) -> HashMap<usize, Vec<Column>> {
+        todo!()
     }
 }
