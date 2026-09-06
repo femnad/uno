@@ -1,8 +1,8 @@
 pub mod prefix;
 
+use crate::internal;
 use crate::prefix::prefix::get_prefix;
 use std::path::Path;
-use crate::internal;
 
 pub fn get(reference: Option<String>, print: bool) {
     let prefix = match get_prefix() {
