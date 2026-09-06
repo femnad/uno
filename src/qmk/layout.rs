@@ -178,7 +178,17 @@ pub fn write_layout(keyboard: String, config: String) {
     write_new_lined(&mut out, LAYOUT_END);
     write_to_file(&mut out, "\n");
 
+    write_new_lined(&mut out, "#ifdef CHORDAL_HOLD");
+    write_new_lined(
+        &mut out,
+        format!(
+            "const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_{}(",
+            keyboard.layout_suffix()
+        )
+        .as_str(),
+    );
     write_to_file(&mut out, keyboard.chordal_hold_layout().as_str());
+    write_new_lined(&mut out, ");");
 
     let mut header = OpenOptions::new()
         .create(true)
@@ -232,7 +242,8 @@ trait Keyboard {
         let half = length / 2;
         let thumb_rows = self.thumb_rows();
 
-        for row in 0..self.rows() {
+        let num_rows = self.rows();
+        for row in 0..num_rows {
             if !row_map.contains_key(&row) {
                 let left = vec![CHORDAL_LEFT; half];
                 let right = vec![CHORDAL_RIGHT; half];
@@ -243,33 +254,33 @@ trait Keyboard {
             }
 
             let row_occupancy = row_map.get(&row).unwrap();
-            let mut index = 0;
-            for (idx, column) in row_occupancy.iter().enumerate() {
+            let mut col_idx = 0;
+            for (row_idx, column) in row_occupancy.iter().enumerate() {
                 let num_cols = row_occupancy.len();
 
-                if index == 0 {
+                if col_idx == 0 {
                     out.push_str(" ".repeat(4).as_str());
-                } else {
-                    // out.push_str(",");
                 }
 
                 match column {
                     Column::Empty(cols) => {
-                        if idx == num_cols - 1 {
+                        if row_idx == num_cols - 1 {
                             continue;
                         }
 
                         let empty_cols = vec![" ".repeat(CHORDAL_CHAR_LENGTH); *cols];
                         out.push_str(empty_cols.join("  ").as_str());
                         out.push_str(" ");
-                        if idx < num_cols - 1 {
+
+                        out.push_str(" ");
+                        if col_idx < num_cols - 1 {
                             out.push_str(" ");
                         }
-                        index += cols;
+                        col_idx += cols;
                     }
                     Column::Occupied(cols) => {
                         let mut occupied_cols = vec![];
-                        for i in index..(index + cols) {
+                        for i in col_idx..(col_idx + cols) {
                             let out_char = if thumb_rows.contains(&row) {
                                 CHORDAL_NEUTRAL
                             } else if i < half {
@@ -280,11 +291,12 @@ trait Keyboard {
                             occupied_cols.push(out_char)
                         }
                         out.push_str(occupied_cols.join(", ").as_str());
+
                         out.push_str(",");
-                        if idx < num_cols - 1 {
+                        if col_idx < num_cols - 1 {
                             out.push_str(" ");
                         }
-                        index += cols;
+                        col_idx += cols;
                     }
                 }
             }
@@ -302,10 +314,10 @@ trait Keyboard {
 
         let mut out = String::from(&full_boundary);
         let col_split = Regex::new(r"\s+").unwrap();
-        for (idx, row) in layer.iter().enumerate() {
+        for (row_idx, row) in layer.iter().enumerate() {
             let mut cols = col_split.split(row).collect::<Vec<_>>();
 
-            let col_map = row_map.get(&idx);
+            let col_map = row_map.get(&row_idx);
             if col_map.is_none() {
                 let cols = cols.iter().map(|col| format_value(col)).collect::<Vec<_>>();
                 let col_out = cols.join("|");
@@ -315,7 +327,7 @@ trait Keyboard {
             };
 
             let col_map =
-                col_map.expect(format!("error finding column map for row {}", idx).as_str());
+                col_map.expect(format!("error finding column map for row {}", row_idx).as_str());
             let mut row_out = String::new();
             let mut boundary_out = String::new();
 
@@ -328,10 +340,10 @@ trait Keyboard {
             }
 
             let num_cols = col_map.len();
-            for (idx, col) in col_map.iter().enumerate() {
+            for (col_idx, col) in col_map.iter().enumerate() {
                 match col {
                     Column::Empty(size) => {
-                        if idx == num_cols - 1 {
+                        if col_idx == num_cols - 1 {
                             continue;
                         }
 
@@ -431,7 +443,7 @@ impl Keyboard for Moonlander {
     }
 
     fn thumb_rows(&self) -> HashSet<usize> {
-        HashSet::from([6])
+        HashSet::from([5])
     }
 }
 
