@@ -3,7 +3,13 @@ use regex::Regex;
 use serde::Deserialize;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
+use std::process::exit;
 
+const HEADER: &str = r#"#include QMK_KEYBOARD_H
+#include "version.h"
+"#;
+const LAYOUT_START: &str = "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {";
+const LAYOUT_END: &str = "};";
 const PREONIC_CHORDAL_LAYOUT: &str = r#"#ifdef CHORDAL_HOLD
 const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preonic_grid(
     'L', 'L', 'L', 'L', 'L', 'L',  'R', 'R', 'R', 'R', 'R', 'R',
@@ -17,6 +23,7 @@ const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_preoni
 
 #[derive(Debug, Deserialize)]
 struct Config {
+    custom_definitions: IndexMap<String, String>,
     custom_keys: Vec<String>,
     header_definitions: IndexMap<String, String>,
     layouts: IndexMap<String, Vec<String>>,
@@ -26,10 +33,46 @@ fn get_key(key: String) -> String {
     format!("KC_{}", key.to_ascii_uppercase())
 }
 
+fn write_to_file(out: &mut File, s: &str) {
+    out.write(s.as_bytes()).unwrap();
+}
+
+fn write_new_lined(out: &mut File, s: &str) {
+    write_to_file(out, format!("{}\n", s).as_str());
+}
+
+fn write_commented(out: &mut File, s: &str) {
+    let lines = s.trim().lines().collect::<Vec<_>>();
+    let num_lines = lines.len();
+    if num_lines == 0 {
+        return;
+    }
+
+    if num_lines == 1 {
+        write_new_lined(out, format!("// {}", &lines[0]).as_str());
+    }
+
+    for (idx, line) in lines.iter().enumerate() {
+        if idx == 0 {
+            write_new_lined(out, format!("/* {}", line).as_str());
+        } else if idx == num_lines - 1 {
+            write_new_lined(out, format!(" * {}", line).as_str());
+            write_new_lined(out, "*/");
+        } else {
+            write_new_lined(out, format!(" * {}", line).as_str());
+        }
+    }
+}
+
 pub fn write_layout(keyboard: String, config: String) {
-    let mut file = File::open(config.clone()).expect(format!("cannot open {}", config).as_str());
+    let file = File::open(config.clone());
+    if file.is_err() {
+        println!("Failed to open config file: {}", config.clone());
+        exit(1);
+    }
+
     let mut contents = String::new();
-    file.read_to_string(&mut contents)
+    file.unwrap().read_to_string(&mut contents)
         .expect(format!("cannot read {}", config).as_str());
 
     let config: Config =
@@ -51,6 +94,36 @@ pub fn write_layout(keyboard: String, config: String) {
         .truncate(true)
         .open("keymap-new.c")
         .unwrap();
+
+    write_new_lined(&mut out, HEADER);
+
+    for (idx, layer) in config.layouts.keys().enumerate() {
+        write_to_file(&mut out, &format!("#define {} {}\n",
+                                         layer.to_ascii_uppercase(), idx));
+    }
+    write_to_file(&mut out, "\n");
+
+    for (key, value) in config.custom_definitions {
+        write_to_file(&mut out, &format!("#define {} {}\n",
+                                         key.to_ascii_uppercase(), value.to_ascii_uppercase()));
+    }
+    write_to_file(&mut out, "\n");
+
+    write_new_lined(&mut out, LAYOUT_START);
+
+    for (layer, rows) in &config.layouts {
+        let mut layer_str = String::new();
+        layer_str.push_str(format!("Layer: {}\n", layer).as_str());
+        for row in rows {
+            layer_str.push_str(format!("{}\n", row).as_str());
+        }
+        write_commented(&mut out, format!("{}\n", layer_str).as_str());
+    }
+
+    write_new_lined(&mut out, LAYOUT_END);
+    write_to_file(&mut out, "\n");
+
+    write_to_file(&mut out, PREONIC_CHORDAL_LAYOUT);
 
     let prefix = keyboard
         .custom_keycode_prefix()
