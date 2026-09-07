@@ -142,7 +142,8 @@ struct Config {
     custom_keys: Vec<String>,
     header_definitions: IndexMap<String, String>,
     layouts: IndexMap<String, Vec<String>>,
-    mode_tap_term: usize
+    mode_tap_term: usize,
+    rules: IndexMap<String, String>,
 }
 
 enum Column {
@@ -229,7 +230,7 @@ pub fn write_layout(keyboard: String, config: String) {
         .create(true)
         .write(true)
         .truncate(true)
-        .open("keymap-new.c")
+        .open("keymap.c")
         .unwrap();
 
     write_new_lined(&mut out, HEADER);
@@ -292,13 +293,20 @@ pub fn write_layout(keyboard: String, config: String) {
             &mut out,
             format!("[{}] = LAYOUT_{}(", layer_upper, keyboard.layout_suffix()).as_str(),
         );
-        for row in rows {
+
+        let num_rows = rows.len();
+        for (row_idx, row) in rows.iter().enumerate() {
             let cols = by_whitespace
                 .split(&row)
                 .map(|c| get_qmk_key(c))
                 .collect::<Vec<_>>();
             let col_out = cols.join(", ");
-            write_indented(&mut out, format!("{},", &col_out).as_str(), 8)
+            let last_char = if row_idx < num_rows - 1 {
+                ","
+            } else {
+                ""
+            };
+            write_indented(&mut out, format!("{}{}", &col_out, last_char).as_str(), 8)
         }
         write_new_lined(&mut out, "),");
     }
@@ -327,13 +335,13 @@ pub fn write_layout(keyboard: String, config: String) {
     write_new_lined(&mut out, fn_def.as_str());
     write_to_file(&mut out, "#endif\n");
 
-    write_new_lined(&mut out, format!("\n{}\n", HELPER_FNS).as_str());
+    write_to_file(&mut out, format!("\n{}", HELPER_FNS).as_str());
 
     let mut header = OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
-        .open("config-new.h")
+        .open("config.h")
         .unwrap();
 
     for (key, value) in config.header_definitions {
@@ -346,6 +354,18 @@ pub fn write_layout(keyboard: String, config: String) {
         };
         let line = format!("#define {}{}\n", key, suffix);
         header.write(line.as_bytes()).unwrap();
+    }
+
+    let mut rules = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open("rules.mk")
+        .unwrap();
+    for (key, value) in config.rules {
+        let key = key.to_ascii_uppercase();
+        let line = format!("{} = {}\n", key, value);
+        rules.write(line.as_bytes()).unwrap();
     }
 }
 
