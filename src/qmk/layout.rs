@@ -6,6 +6,8 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::process::exit;
 
+use minijinja::{Environment, context};
+
 const CHORDAL_LEFT: &str = "'L'";
 const CHORDAL_RIGHT: &str = "'R'";
 const CHORDAL_NEUTRAL: &str = "'*'";
@@ -19,12 +21,128 @@ const LAYOUT_START: &str = "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX
 const LAYOUT_END: &str = "};";
 const TRANSPARENT_KEY: &str = "_";
 
+const TAPPING_TERM_FUNCTION_DEF: &str = r#"uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
+  switch (keycode) {
+{%- for mod_tap in mod_taps %}
+    case {{ mod_tap }}:
+{%- endfor %}
+      return {{ tap_term }};
+    default:
+      return TAPPING_TERM;
+  }
+}
+"#;
+
+const HELPER_FNS: &str = r#"void maybe_reset_rgb_matrix(uint8_t mods) {
+  if (mods == 0) {
+    rgb_matrix_set_color_all(0, 0, 0);
+  }
+}
+
+void oneshot_mods_changed_user(uint8_t mods) {
+  maybe_reset_rgb_matrix(mods);
+}
+
+void oneshot_locked_mods_changed_user(uint8_t mods) {
+  maybe_reset_rgb_matrix(mods);
+}
+
+void reset_color(int index) {
+  rgb_matrix_set_color(index, 0, 0, 0);
+}
+
+void clear(void) {
+  caps_word_off();
+  clear_oneshot_mods();
+  clear_oneshot_locked_mods();
+  clear_keyboard();
+  reset_oneshot_layer();
+  layer_clear();
+  layer_on(BASE);
+  rgb_matrix_set_color_all(0, 0, 0);
+}
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+  if (record->event.pressed) {
+    switch (keycode) {
+      case CLEAR:
+        clear();
+        return false;
+    }
+ }
+  return true;
+}
+
+bool rgb_matrix_indicators_user(void) {
+  uint8_t mods = get_oneshot_mods();
+  uint8_t locked_mods = get_oneshot_locked_mods();
+
+  if (mods & MOD_MASK_SHIFT) {
+    rgb_matrix_set_color(LEFT_SHIFT_INDEX, 128, 0, 128);
+    rgb_matrix_set_color(RIGHT_SHIFT_INDEX, 128, 0, 128);
+  } else if (locked_mods & MOD_MASK_SHIFT) {
+    rgb_matrix_set_color(LEFT_SHIFT_INDEX, 255, 0, 255);
+    rgb_matrix_set_color(RIGHT_SHIFT_INDEX, 255, 0, 255);
+  } else {
+    reset_color(LEFT_SHIFT_INDEX);
+    reset_color(RIGHT_SHIFT_INDEX);
+  }
+
+  uint8_t osl_state = get_oneshot_layer_state();
+  uint8_t osl_left_index = 0, osl_right_index = 0;
+  uint8_t osl_r = 0, osl_g = 0, osl_b = 0;
+  switch (get_oneshot_layer()) {
+    case INDX:
+      osl_left_index = INDX_OSL_LEFT_INDEX;
+      osl_right_index = INDX_OSL_RIGHT_INDEX;
+      osl_r = 255;
+      break;
+    case SYMB:
+      osl_left_index = SYMB_OSL_LEFT_INDEX;
+      osl_right_index = SYMB_OSL_RIGHT_INDEX;
+      osl_b = 255;
+      break;
+    case MOVE:
+      osl_left_index = MOVE_OSL_LEFT_INDEX;
+      osl_right_index = MOVE_OSL_RIGHT_INDEX;
+      osl_g = 255;
+      break;
+  }
+
+  if (osl_state & ONESHOT_TOGGLED) {
+    rgb_matrix_set_color(osl_left_index, osl_r, osl_g, osl_b);
+    rgb_matrix_set_color(osl_right_index, osl_r, osl_g, osl_b);
+  } else if (osl_state) {
+    rgb_matrix_set_color(osl_left_index, osl_r / 2, osl_g / 2, osl_b / 2);
+    rgb_matrix_set_color(osl_right_index, osl_r / 2, osl_g / 2, osl_b / 2);
+  } else {
+    reset_color(INDX_OSL_LEFT_INDEX);
+    reset_color(INDX_OSL_RIGHT_INDEX);
+    reset_color(SYMB_OSL_LEFT_INDEX);
+    reset_color(SYMB_OSL_RIGHT_INDEX);
+    reset_color(MOVE_OSL_LEFT_INDEX);
+    reset_color(MOVE_OSL_RIGHT_INDEX);
+  }
+
+  if (is_caps_word_on()) {
+    rgb_matrix_set_color(CAPS_WORD_LEFT_INDEX, 255, 255, 0);
+    rgb_matrix_set_color(CAPS_WORD_RIGHT_INDEX, 255, 255, 0);
+  } else {
+    reset_color(CAPS_WORD_LEFT_INDEX);
+    reset_color(CAPS_WORD_RIGHT_INDEX);
+  }
+
+  return true;
+}
+"#;
+
 #[derive(Debug, Deserialize)]
 struct Config {
     custom_definitions: IndexMap<String, String>,
     custom_keys: Vec<String>,
     header_definitions: IndexMap<String, String>,
     layouts: IndexMap<String, Vec<String>>,
+    mode_tap_term: usize
 }
 
 enum Column {
@@ -75,6 +193,10 @@ fn get_qmk_key(value: &str) -> String {
         return KC_TRANSPARENT.to_string();
     }
 
+    if value.starts_with("KC_") {
+        return value;
+    }
+
     format!("KC_{}", value)
 }
 
@@ -120,7 +242,13 @@ pub fn write_layout(keyboard: String, config: String) {
     }
     write_to_file(&mut out, "\n");
 
+    let mod_layer_tap = Regex::new(r"^(mt\(|lt\().*").unwrap();
+    let mut mod_taps = vec![];
     for (key, value) in config.custom_definitions {
+        if mod_layer_tap.is_match(&value) {
+            mod_taps.push(key.clone().to_ascii_uppercase());
+        }
+
         write_to_file(
             &mut out,
             &format!(
@@ -190,6 +318,17 @@ pub fn write_layout(keyboard: String, config: String) {
     write_to_file(&mut out, keyboard.chordal_hold_layout().as_str());
     write_new_lined(&mut out, ");");
 
+    let mut env = Environment::new();
+    env.add_template("tap_term", TAPPING_TERM_FUNCTION_DEF).unwrap();
+    let template = env.get_template("tap_term").unwrap();
+    let fn_def = template.render(context! { mod_taps => mod_taps, tap_term => config.mode_tap_term }).unwrap();
+
+    write_to_file(&mut out, "\n");
+    write_new_lined(&mut out, fn_def.as_str());
+    write_to_file(&mut out, "#endif\n");
+
+    write_new_lined(&mut out, format!("\n{}\n", HELPER_FNS).as_str());
+
     let mut header = OpenOptions::new()
         .create(true)
         .write(true)
@@ -243,7 +382,7 @@ trait Keyboard {
         let thumb_rows = self.thumb_rows();
 
         let num_rows = self.rows();
-        for row in 0..num_rows {
+        for (row_idx, row) in (0..num_rows).enumerate() {
             if !row_map.contains_key(&row) {
                 let left = vec![CHORDAL_LEFT; half];
                 let right = vec![CHORDAL_RIGHT; half];
@@ -255,8 +394,8 @@ trait Keyboard {
 
             let row_occupancy = row_map.get(&row).unwrap();
             let mut col_idx = 0;
-            for (row_idx, column) in row_occupancy.iter().enumerate() {
-                let num_cols = row_occupancy.len();
+            for (occ_idx, column) in row_occupancy.iter().enumerate() {
+                let col_series = row_occupancy.len();
 
                 if col_idx == 0 {
                     out.push_str(" ".repeat(4).as_str());
@@ -264,7 +403,7 @@ trait Keyboard {
 
                 match column {
                     Column::Empty(cols) => {
-                        if row_idx == num_cols - 1 {
+                        if row_idx == num_rows - 1 && occ_idx == col_series - 1 {
                             continue;
                         }
 
@@ -273,9 +412,6 @@ trait Keyboard {
                         out.push_str(" ");
 
                         out.push_str(" ");
-                        if col_idx < num_cols - 1 {
-                            out.push_str(" ");
-                        }
                         col_idx += cols;
                     }
                     Column::Occupied(cols) => {
@@ -292,8 +428,16 @@ trait Keyboard {
                         }
                         out.push_str(occupied_cols.join(", ").as_str());
 
-                        out.push_str(",");
-                        if col_idx < num_cols - 1 {
+                        // No comma before closing parentheses.
+                        let next_col = row_occupancy.get(occ_idx + 1).or(None);
+                        if row_idx < num_rows - 1
+                            || col_idx < col_series - 1
+                            || matches!(next_col, Some(Column::Occupied(_)))
+                        {
+                            out.push_str(",");
+                        }
+
+                        if col_idx < col_series - 1 {
                             out.push_str(" ");
                         }
                         col_idx += cols;
