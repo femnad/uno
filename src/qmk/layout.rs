@@ -95,6 +95,7 @@ bool rgb_matrix_indicators_user(void) {
   uint8_t mods = get_oneshot_mods();
   uint8_t locked_mods = get_oneshot_locked_mods();
 
+#if defined(LEFT_SHIFT_INDEX) && defined(RIGHT_SHIFT_INDEX)
   if (mods & MOD_MASK_SHIFT) {
     rgb_matrix_set_color(LEFT_SHIFT_INDEX, 128, 0, 128);
     rgb_matrix_set_color(RIGHT_SHIFT_INDEX, 128, 0, 128);
@@ -105,7 +106,11 @@ bool rgb_matrix_indicators_user(void) {
     reset_color(LEFT_SHIFT_INDEX);
     reset_color(RIGHT_SHIFT_INDEX);
   }
+#endif
 
+#if defined(INDX_OSL_LEFT_INDEX) && defined(INDX_OSL_RIGHT_INDEX)
+#if defined(SYMB_OSL_LEFT_INDEX) && defined(SYMB_OSL_RIGHT_INDEX)
+#if defined(MOVE_OSL_LEFT_INDEX) && defined(MOVE_OSL_RIGHT_INDEX)
   uint8_t osl_state = get_oneshot_layer_state();
   uint8_t osl_left_index = 0, osl_right_index = 0;
   uint8_t osl_r = 0, osl_g = 0, osl_b = 0;
@@ -141,7 +146,11 @@ bool rgb_matrix_indicators_user(void) {
     reset_color(MOVE_OSL_LEFT_INDEX);
     reset_color(MOVE_OSL_RIGHT_INDEX);
   }
+#endif
+#endif
+#endif
 
+#if defined(CAPS_WORD_LEFT_INDEX) && defined(CAPS_WORD_RIGHT_INDEX)
   if (is_caps_word_on()) {
     rgb_matrix_set_color(CAPS_WORD_LEFT_INDEX, 255, 255, 0);
     rgb_matrix_set_color(CAPS_WORD_RIGHT_INDEX, 255, 255, 0);
@@ -149,6 +158,7 @@ bool rgb_matrix_indicators_user(void) {
     reset_color(CAPS_WORD_LEFT_INDEX);
     reset_color(CAPS_WORD_RIGHT_INDEX);
   }
+#endif
 
   return true;
 }
