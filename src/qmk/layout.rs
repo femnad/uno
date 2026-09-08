@@ -1,10 +1,12 @@
 use indexmap::IndexMap;
+use phf::{phf_set, Set};
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::process::exit;
+use std::sync::LazyLock;
 
 use minijinja::{Environment, context};
 
@@ -16,9 +18,25 @@ const COL_LENGTH: usize = 9;
 const HEADER: &str = r#"#include QMK_KEYBOARD_H
 #include "version.h"
 "#;
-const KC_TRANSPARENT: &str = "________";
+const KC_TRANSPARENT: &str = "_______";
 const LAYOUT_START: &str = "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {";
 const LAYOUT_END: &str = "};";
+const MODDED_KEY_PATTERN: &str = r"[r|l](ctl|alt|gui)\(.*\)";
+static MODDED_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
+    Regex::new(MODDED_KEY_PATTERN).unwrap());
+static NON_KC_KEYS: Set<&'static str> = phf_set! {
+    "cw_togg",
+    "qk_boot",
+    "rgb_mod",
+    "rgb_rmod",
+    "rgb_tog",
+};
+const ONE_SHOT_MOD_PATTERN: &str = r"osm\((.*)\)";
+static ONE_SHOT_MOD_REGEX: LazyLock<Regex> = LazyLock::new(||
+    Regex::new(ONE_SHOT_MOD_PATTERN).unwrap());
+const ONE_SHOT_LAYER_PATTERN: &str = r"osl\((.*)\)";
+static ONE_SHOT_LAYER_REGEX: LazyLock<Regex> = LazyLock::new(||
+    Regex::new(ONE_SHOT_LAYER_PATTERN).unwrap());
 const TRANSPARENT_KEY: &str = "_";
 
 const TAPPING_TERM_FUNCTION_DEF: &str = r#"uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
@@ -188,17 +206,57 @@ fn write_commented(out: &mut File, s: &str) {
     }
 }
 
-fn get_qmk_key(value: &str) -> String {
-    let value = value.to_ascii_uppercase();
+fn parse_modded_key(value: &str) -> String {
+    let mut outer = String::new();
+    for (idx, c) in value.chars().enumerate() {
+        if c == '(' {
+            let sub = parse_modded_key(&value[idx + 1..]);
+            return format!("{}({})", outer, sub);
+        } else if c == ')' {
+            return format!("kc_{}", outer.as_str());
+        } else {
+            outer.push(c);
+        }
+    }
+    outer
+}
+
+fn get_qmk_key(value: &str, config: &Config) -> String {
+    if config.custom_definitions.contains_key(value) {
+        return value.to_string();
+    }
+
+    if let Some(caps) = ONE_SHOT_MOD_REGEX.captures(value) {
+        let modded = &caps[1];
+        return format!("osm(mod_{})", modded);
+    }
+
+    if let Some(caps) = ONE_SHOT_LAYER_REGEX.captures(value) {
+        let layer = &caps[1];
+        return format!("osl({})", layer);
+    }
+
+    if MODDED_KEY_REGEX.is_match(value) {
+        return parse_modded_key(value);
+    }
+
+    if NON_KC_KEYS.contains(&value) {
+        return value.to_string();
+    }
+
     if value == TRANSPARENT_KEY {
         return KC_TRANSPARENT.to_string();
     }
 
-    if value.starts_with("KC_") {
-        return value;
+    if value.starts_with("kc_") {
+        return value.to_string();
     }
 
-    format!("KC_{}", value)
+    format!("kc_{}", value)
+}
+
+fn get_key(value: &str, config: &Config) -> String {
+    get_qmk_key(value, config).to_ascii_uppercase()
 }
 
 pub fn write_layout(keyboard: String, config: String) {
@@ -245,7 +303,7 @@ pub fn write_layout(keyboard: String, config: String) {
 
     let mod_layer_tap = Regex::new(r"^(mt\(|lt\().*").unwrap();
     let mut mod_taps = vec![];
-    for (key, value) in config.custom_definitions {
+    for (key, value) in &config.custom_definitions {
         if mod_layer_tap.is_match(&value) {
             mod_taps.push(key.clone().to_ascii_uppercase());
         }
@@ -298,7 +356,7 @@ pub fn write_layout(keyboard: String, config: String) {
         for (row_idx, row) in rows.iter().enumerate() {
             let cols = by_whitespace
                 .split(&row)
-                .map(|c| get_qmk_key(c))
+                .map(|c| get_key(c, &config))
                 .collect::<Vec<_>>();
             let col_out = cols.join(", ");
             let last_char = if row_idx < num_rows - 1 {
