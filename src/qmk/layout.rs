@@ -236,6 +236,10 @@ fn get_qmk_key(value: &str, config: &Config) -> String {
         return value.to_string();
     }
 
+    if config.custom_keys.contains(&value.to_string()) {
+        return value.to_string();
+    }
+
     if let Some(caps) = ONE_SHOT_MOD_REGEX.captures(value) {
         let modded = &caps[1];
         return format!("osm(mod_{})", modded);
