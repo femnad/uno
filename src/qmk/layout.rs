@@ -24,9 +24,13 @@ const LAYOUT_END: &str = "};";
 const MODDED_KEY_PATTERN: &str = r"[r|l](ctl|alt|gui)\(.*\)";
 static MODDED_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(MODDED_KEY_PATTERN).unwrap());
+const MOUSE_KEY_PREIX: &str = "ms_";
 static NON_KC_KEYS: Set<&'static str> = phf_set! {
     "cw_togg",
     "qk_boot",
+    "rm_next",
+    "rm_prev",
+    "rm_togg",
     "rgb_mod",
     "rgb_rmod",
     "rgb_tog",
@@ -87,7 +91,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         clear();
         return false;
     }
- }
+  }
   return true;
 }
 
@@ -240,6 +244,10 @@ fn get_qmk_key(value: &str, config: &Config) -> String {
         return value.to_string();
     }
 
+    if value.starts_with(MOUSE_KEY_PREIX) {
+        return value.to_string();
+    }
+
     if let Some(caps) = ONE_SHOT_MOD_REGEX.captures(value) {
         let modded = &caps[1];
         return format!("osm(mod_{})", modded);
@@ -291,6 +299,7 @@ pub fn write_layout(keyboard: String, config: String) {
     let keyboard: Box<dyn Keyboard> = match keyboard.as_str() {
         "ergodox-ez" => Box::new(ErgodoxEz),
         "moonlander" => Box::new(Moonlander),
+        "nyquist-lm" => Box::new(NyquistLM),
         "preonic" => Box::new(Preonic),
         _ => {
             println!("unknown keyboard {}", keyboard);
@@ -458,7 +467,7 @@ trait Keyboard {
 
     fn layout_suffix(&self) -> String;
 
-    fn max_length(&self) -> usize;
+    fn max_columns(&self) -> usize;
 
     fn row_map(&self) -> HashMap<usize, Vec<Column>>;
 
@@ -466,21 +475,35 @@ trait Keyboard {
 
     fn thumb_rows(&self) -> HashSet<usize>;
 
+    fn get_full_row_chordal_layout(&self, row_idx: usize) -> String {
+        if self.thumb_rows().contains(&row_idx) {
+            return vec![CHORDAL_NEUTRAL; self.max_columns()].join(", ");
+        }
+
+        let half = self.max_columns() / 2;
+        let left = vec![CHORDAL_LEFT; half];
+        let right = vec![CHORDAL_RIGHT; half];
+        let both = [left, right].concat();
+        both.join(", ")
+    }
+
     fn chordal_hold_layout(&self) -> String {
         let row_map = self.row_map();
         let mut out = String::new();
-        let length = self.max_length();
+        let length = self.max_columns();
         let half = length / 2;
         let thumb_rows = self.thumb_rows();
 
         let num_rows = self.rows();
         for (row_idx, row) in (0..num_rows).enumerate() {
             if !row_map.contains_key(&row) {
-                let left = vec![CHORDAL_LEFT; half];
-                let right = vec![CHORDAL_RIGHT; half];
-                let both = [left, right].concat();
-                let joined = both.join(", ");
-                out.push_str(format!("    {},\n", joined).as_str());
+                let chordal = self.get_full_row_chordal_layout(row_idx);
+                let maybe_comma = if row_idx < self.rows() - 1 {
+                    ","
+                } else {
+                    ""
+                };
+                out.push_str(format!("    {}{}\n", chordal, maybe_comma).as_str());
                 continue;
             }
 
@@ -545,7 +568,7 @@ trait Keyboard {
         let row_map = self.row_map();
         let col_boundry = "-".repeat(COL_LENGTH);
 
-        let full_boundary = vec![col_boundry; self.max_length()];
+        let full_boundary = vec![col_boundry; self.max_columns()];
         let full_boundary = format!("+{}+\n", full_boundary.join("+"));
 
         let mut out = String::from(&full_boundary);
@@ -623,7 +646,7 @@ impl Keyboard for ErgodoxEz {
         todo!()
     }
 
-    fn max_length(&self) -> usize {
+    fn max_columns(&self) -> usize {
         todo!()
     }
 
@@ -647,7 +670,7 @@ impl Keyboard for Moonlander {
         "moonlander".to_string()
     }
 
-    fn max_length(&self) -> usize {
+    fn max_columns(&self) -> usize {
         14
     }
 
@@ -694,7 +717,7 @@ impl Keyboard for Preonic {
         todo!()
     }
 
-    fn max_length(&self) -> usize {
+    fn max_columns(&self) -> usize {
         todo!()
     }
 
@@ -708,5 +731,29 @@ impl Keyboard for Preonic {
 
     fn thumb_rows(&self) -> HashSet<usize> {
         todo!()
+    }
+}
+
+struct NyquistLM;
+
+impl Keyboard for NyquistLM {
+    fn layout_suffix(&self) -> String {
+        "ortho_5x12".to_string()
+    }
+
+    fn max_columns(&self) -> usize {
+        12
+    }
+
+    fn row_map(&self) -> HashMap<usize, Vec<Column>> {
+        HashMap::from([])
+    }
+
+    fn rows(&self) -> usize {
+        5
+    }
+
+    fn thumb_rows(&self) -> HashSet<usize> {
+        HashSet::from([4])
     }
 }
