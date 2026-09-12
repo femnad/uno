@@ -21,16 +21,13 @@ const HEADER: &str = r#"#include QMK_KEYBOARD_H
 const KC_TRANSPARENT: &str = "_______";
 const LAYOUT_START: &str = "const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {";
 const LAYOUT_END: &str = "};";
-const MODDED_KEY_PATTERN: &str = r"[r|l](ctl|alt|gui)\(.*\)";
+const MODDED_KEY_PATTERN: &str = r"[r|l](ctl|alt|gui|sft)\(.*\)";
 static MODDED_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(MODDED_KEY_PATTERN).unwrap());
 const MOUSE_KEY_PREIX: &str = "ms_";
 static NON_KC_KEYS: Set<&'static str> = phf_set! {
     "cw_togg",
     "qk_boot",
-    "rm_next",
-    "rm_prev",
-    "rm_togg",
     "rgb_mod",
     "rgb_rmod",
     "rgb_tog",
@@ -41,6 +38,7 @@ static ONE_SHOT_MOD_REGEX: LazyLock<Regex> = LazyLock::new(||
 const ONE_SHOT_LAYER_PATTERN: &str = r"osl\((.*)\)";
 static ONE_SHOT_LAYER_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(ONE_SHOT_LAYER_PATTERN).unwrap());
+const RGB_KEY_PREFIX: &str = "rm_";
 const TRANSPARENT_KEY: &str = "_";
 
 const TAPPING_TERM_FUNCTION_DEF: &str = r#"uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
@@ -245,6 +243,10 @@ fn get_qmk_key(value: &str, config: &Config) -> String {
     }
 
     if value.starts_with(MOUSE_KEY_PREIX) {
+        return value.to_string();
+    }
+
+    if value.starts_with(RGB_KEY_PREFIX) {
         return value.to_string();
     }
 
