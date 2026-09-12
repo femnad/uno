@@ -46,7 +46,7 @@ const TAPPING_TERM_FUNCTION_DEF: &str = r#"uint16_t get_tapping_term(uint16_t ke
 }
 "#;
 
-const HELPER_FNS: &str = r#"void maybe_reset_rgb_matrix(uint8_t mods) {
+const HELPER_FNS: &str = r#"{% if is_rgb %}void maybe_reset_rgb_matrix(uint8_t mods) {
   if (mods == 0) {
     rgb_matrix_set_color_all(0, 0, 0);
   }
@@ -63,6 +63,7 @@ void oneshot_locked_mods_changed_user(uint8_t mods) {
 void reset_color(int index) {
   rgb_matrix_set_color(index, 0, 0, 0);
 }
+{%- endif %}
 
 void clear(void) {
   caps_word_off();
@@ -72,7 +73,9 @@ void clear(void) {
   reset_oneshot_layer();
   layer_clear();
   layer_on(BASE);
+{%- if is_rgb %}
   rgb_matrix_set_color_all(0, 0, 0);
+{%- endif %}
 }
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
@@ -85,6 +88,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
   }
   return true;
 }
+{%- if is_rgb %}
 
 bool rgb_matrix_indicators_user(void) {
   uint8_t mods = get_oneshot_mods();
@@ -157,6 +161,7 @@ bool rgb_matrix_indicators_user(void) {
 
   return true;
 }
+{%- endif %}
 "#;
 
 #[derive(Debug, Deserialize)]
@@ -402,7 +407,7 @@ pub fn write_layout(keyboard: String, config: String) {
     write_new_lined(&mut out, fn_def.as_str());
     write_to_file(&mut out, "#endif\n");
 
-    write_to_file(&mut out, format!("\n{}", HELPER_FNS).as_str());
+    write_to_file(&mut out, format!("\n{}\n", keyboard.get_helper_fns()).as_str());
 
     let mut header = OpenOptions::new()
         .create(true)
@@ -460,18 +465,6 @@ trait Keyboard {
     fn rows(&self) -> usize;
 
     fn thumb_rows(&self) -> HashSet<usize>;
-
-    fn get_full_row_chordal_layout(&self, row_idx: usize) -> String {
-        if self.thumb_rows().contains(&row_idx) {
-            return vec![CHORDAL_NEUTRAL; self.max_columns()].join(", ");
-        }
-
-        let half = self.max_columns() / 2;
-        let left = vec![CHORDAL_LEFT; half];
-        let right = vec![CHORDAL_RIGHT; half];
-        let both = [left, right].concat();
-        both.join(", ")
-    }
 
     fn chordal_hold_layout(&self) -> String {
         let row_map = self.row_map();
@@ -548,6 +541,30 @@ trait Keyboard {
             out.push_str("\n");
         }
         out
+    }
+
+    fn get_full_row_chordal_layout(&self, row_idx: usize) -> String {
+        if self.thumb_rows().contains(&row_idx) {
+            return vec![CHORDAL_NEUTRAL; self.max_columns()].join(", ");
+        }
+
+        let half = self.max_columns() / 2;
+        let left = vec![CHORDAL_LEFT; half];
+        let right = vec![CHORDAL_RIGHT; half];
+        let both = [left, right].concat();
+        both.join(", ")
+    }
+
+    fn get_helper_fns(&self) -> String {
+        let mut env = Environment::new();
+        env.add_template("helper_fns", HELPER_FNS).unwrap();
+        let template = env.get_template("helper_fns").unwrap();
+        let helper_fns = template.render(context! { is_rgb => self.is_rgb() }).unwrap();
+        helper_fns.to_string()
+    }
+
+    fn is_rgb(&self) -> bool {
+        true
     }
 
     fn layer_map(&self, layer: &Vec<String>) -> String {
@@ -717,6 +734,10 @@ impl Keyboard for Preonic {
 
     fn thumb_rows(&self) -> HashSet<usize> {
         HashSet::from([4])
+    }
+
+    fn is_rgb(&self) -> bool {
+        false
     }
 }
 
