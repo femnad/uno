@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use phf::{phf_set, Set};
 use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -24,21 +23,15 @@ const LAYOUT_END: &str = "};";
 const MODDED_KEY_PATTERN: &str = r"[r|l](ctl|alt|gui|sft)\(.*\)";
 static MODDED_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(MODDED_KEY_PATTERN).unwrap());
-const MOUSE_KEY_PREIX: &str = "ms_";
-static NON_KC_KEYS: Set<&'static str> = phf_set! {
-    "cw_togg",
-    "qk_boot",
-    "rgb_mod",
-    "rgb_rmod",
-    "rgb_tog",
-};
+const NON_KC_KEY_PATTERN: &str = "^(cw|ms|qk|rgb|rm)_.*";
+static NON_KC_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
+    Regex::new(NON_KC_KEY_PATTERN).unwrap());
 const ONE_SHOT_MOD_PATTERN: &str = r"osm\((.*)\)";
 static ONE_SHOT_MOD_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(ONE_SHOT_MOD_PATTERN).unwrap());
-const ONE_SHOT_LAYER_PATTERN: &str = r"osl\((.*)\)";
-static ONE_SHOT_LAYER_REGEX: LazyLock<Regex> = LazyLock::new(||
-    Regex::new(ONE_SHOT_LAYER_PATTERN).unwrap());
-const RGB_KEY_PREFIX: &str = "rm_";
+const LAYER_PATTERN: &str = r"(osl|tg)\((.*)\)";
+static LAYER_REGEX: LazyLock<Regex> = LazyLock::new(||
+    Regex::new(LAYER_PATTERN).unwrap());
 const TRANSPARENT_KEY: &str = "_";
 
 const TAPPING_TERM_FUNCTION_DEF: &str = r#"uint16_t get_tapping_term(uint16_t keycode, keyrecord_t *record) {
@@ -242,11 +235,7 @@ fn get_qmk_key(value: &str, config: &Config) -> String {
         return value.to_string();
     }
 
-    if value.starts_with(MOUSE_KEY_PREIX) {
-        return value.to_string();
-    }
-
-    if value.starts_with(RGB_KEY_PREFIX) {
+    if NON_KC_KEY_REGEX.is_match(value) {
         return value.to_string();
     }
 
@@ -255,17 +244,12 @@ fn get_qmk_key(value: &str, config: &Config) -> String {
         return format!("osm(mod_{})", modded);
     }
 
-    if let Some(caps) = ONE_SHOT_LAYER_REGEX.captures(value) {
-        let layer = &caps[1];
-        return format!("osl({})", layer);
+    if LAYER_REGEX.is_match(value) {
+        return value.to_string();
     }
 
     if MODDED_KEY_REGEX.is_match(value) {
         return parse_modded_key(value);
-    }
-
-    if NON_KC_KEYS.contains(&value) {
-        return value.to_string();
     }
 
     if value == TRANSPARENT_KEY {
