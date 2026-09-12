@@ -700,23 +700,23 @@ impl Keyboard for Preonic {
     }
 
     fn layout_suffix(&self) -> String {
-        todo!()
+        "preonic_grid".to_string()
     }
 
     fn max_columns(&self) -> usize {
-        todo!()
+        12
     }
 
     fn row_map(&self) -> HashMap<usize, Vec<Column>> {
-        todo!()
+        HashMap::from([])
     }
 
     fn rows(&self) -> usize {
-        todo!()
+        5
     }
 
     fn thumb_rows(&self) -> HashSet<usize> {
-        todo!()
+        HashSet::from([4])
     }
 }
 
