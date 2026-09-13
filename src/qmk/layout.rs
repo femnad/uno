@@ -23,7 +23,7 @@ const LAYOUT_END: &str = "};";
 const MODDED_KEY_PATTERN: &str = r"[r|l](ctl|alt|gui|sft)\(.*\)";
 static MODDED_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(MODDED_KEY_PATTERN).unwrap());
-const NON_KC_KEY_PATTERN: &str = "^(cw|ms|qk|rgb|rm)_.*";
+const NON_KC_KEY_PATTERN: &str = "^(bl|cw|ms|qk|rgb|rm)_.*";
 static NON_KC_KEY_REGEX: LazyLock<Regex> = LazyLock::new(||
     Regex::new(NON_KC_KEY_PATTERN).unwrap());
 const ONE_SHOT_MOD_PATTERN: &str = r"osm\((.*)\)";
@@ -292,6 +292,7 @@ pub fn write_layout(keyboard: String, config: String) {
         "moonlander" => Box::new(Moonlander),
         "nyquist-lm" => Box::new(NyquistLM),
         "preonic" => Box::new(Preonic),
+        "sofle" => Box::new(Sofle),
         _ => {
             println!("unknown keyboard {}", keyboard);
             exit(1);
@@ -339,6 +340,12 @@ pub fn write_layout(keyboard: String, config: String) {
     out.write(format!("enum {}_keycodes {{\n", prefix).as_bytes())
         .unwrap();
 
+    let layout_suffix = if keyboard.layout_suffix().is_empty() {
+        "".to_string()
+    } else {
+        format!("_{}", keyboard.layout_suffix())
+    };
+
     for (idx, code) in config.custom_keys.iter().enumerate() {
         let code = code.to_ascii_uppercase();
         let suffix = if idx == 0 { " = SAFE_RANGE,\n" } else { ",\n" };
@@ -363,7 +370,7 @@ pub fn write_layout(keyboard: String, config: String) {
 
         write_new_lined(
             &mut out,
-            format!("[{}] = LAYOUT_{}(", layer_upper, keyboard.layout_suffix()).as_str(),
+            format!("[{}] = LAYOUT{}(", layer_upper, layout_suffix).as_str(),
         );
 
         let num_rows = rows.len();
@@ -390,8 +397,8 @@ pub fn write_layout(keyboard: String, config: String) {
     write_new_lined(
         &mut out,
         format!(
-            "const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT_{}(",
-            keyboard.layout_suffix()
+            "const char chordal_hold_layout[MATRIX_ROWS][MATRIX_COLS] PROGMEM = LAYOUT{}(",
+            layout_suffix
         )
         .as_str(),
     );
@@ -497,7 +504,7 @@ trait Keyboard {
 
                 match column {
                     Column::Empty(cols) => {
-                        if row_idx == num_rows - 1 && occ_idx == col_series - 1 {
+                        if occ_idx == col_series - 1 {
                             continue;
                         }
 
@@ -762,5 +769,35 @@ impl Keyboard for NyquistLM {
 
     fn thumb_rows(&self) -> HashSet<usize> {
         HashSet::from([4])
+    }
+}
+
+struct Sofle;
+
+impl Keyboard for Sofle {
+    fn layout_suffix(&self) -> String {
+        "".to_string()
+    }
+
+    fn max_columns(&self) -> usize {
+        14
+    }
+
+    fn row_map(&self) -> HashMap<usize, Vec<Column>> {
+        HashMap::from([
+            (0, vec![Column::Occupied(6), Column::Empty(2), Column::Occupied(6)]),
+            (1, vec![Column::Occupied(6), Column::Empty(2), Column::Occupied(6)]),
+            (2, vec![Column::Occupied(6), Column::Empty(2), Column::Occupied(6)]),
+            (4, vec![Column::Empty(2), Column::Occupied(10), Column::Empty(2)]),
+            (5, vec![Column::Empty(6), Column::Occupied(2), Column::Empty(6)]),
+        ])
+    }
+
+    fn rows(&self) -> usize {
+        6
+    }
+
+    fn thumb_rows(&self) -> HashSet<usize> {
+        HashSet::from([5])
     }
 }
